@@ -20,4 +20,4 @@ O trabalho tinha como especificações:
 
 ♦️  O processos 0 imprime a matriz modificada no vídeo
 
-O código deve ser feito em C, utilizando a biblioteca OpenMpi.
+O código deve ser feito em C, utilizando a biblioteca MPI.
