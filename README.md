@@ -19,3 +19,5 @@ O trabalho tinha como especificações:
 ♦️  Ao final do processamento da sua respectiva linha, cada processo deverá envia-la de volta para o processo 0.
 
 ♦️  O processos 0 imprime a matriz modificada no vídeo
+
+O código deve ser feito em C, utilizando a biblioteca OpenMpi.
