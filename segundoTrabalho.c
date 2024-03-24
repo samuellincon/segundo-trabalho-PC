@@ -42,12 +42,6 @@ int create_tag(int tag, int line_index, int column_index) {
   return (tag) << 20 | (line_index << 10) | column_index;
 }
 
-int decode_tag(int tag) { return tag >> 20; }
-
-int decode_line_index(int tag) { return (tag >> 10) & 0x3FF; }
-
-int decode_column_index(int tag) { return tag & 0x3FF; }
-
 void validador(int **matriz, int linhas, int colunas) {
   for (int i = 0; i < linhas; i++) {
     for (int j = 0; j < colunas; j++) {
