@@ -231,10 +231,8 @@ int process_element(process_data_t *data, line_data_t *line, int i) {
 void control(int np, int number_of_lines, int number_of_columns) {
   int **matrix;
   int **matrix_backup;
-  MPI_Status st;
 
   int next_process_id = 1;
-  int prev_process_id = 1 % np;
 
   matrix = generate_matrix(number_of_lines, number_of_columns);
 
@@ -334,7 +332,6 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
     if (i > 0) {
       int prev_completed_line = lines[i - 1].line_index;
-      int completed_line = lines[i].line_index;
 
       for (int j = 1; j < np; j++) {
         int done_line[number_of_columns];
@@ -413,7 +410,6 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
 void node(int id, int np) {
   int next_process_id = (id + 1) % np;
-  int prev_process_id = (id - 1) % np;
 
   process_data_t data;
   data.process_id = id;
