@@ -485,7 +485,7 @@ void node(int id, int np) {
     int tag = create_tag(DONE_LINE_TAG, lines[i].line_index, 0);
 
     printf(
-        "\e[0;32m[NODE-%d] Enviando linha processada %d para "
+        "\033[0;32m[NODE-%d] Enviando linha processada %d para "
         "'NODE-%d' com TAG=%x\033[0m\n",
         id, lines[i].line_index, CONTROLLER_PROCESS, tag);
 
@@ -494,7 +494,7 @@ void node(int id, int np) {
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
-};
+}
 
 int main(int argc, char *argv[]) {
   int id, np;
