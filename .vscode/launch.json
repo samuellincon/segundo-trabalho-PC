@@ -1,0 +1,31 @@
+{
+  // Use o IntelliSense para saber mais sobre os atributos possíveis.
+  // Focalizar para exibir as descrições dos atributos existentes.
+  // Para obter mais informações, acesse: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CodeLLDB",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/${fileBasenameNoExtension}.o",
+      // "console": "externalTerminal",
+      // "terminal": "external",
+      "internalConsoleOptions": "openOnSessionStart",
+      "args": ["-np", "2"],
+      "cwd": "${fileDirname}",
+      "preLaunchTask": "build-active-file"
+    },
+    {
+      "name": "(lldb) Anexar",
+      "type": "lldb",
+      "pid": "${command:pickMyProcess}",
+      "request": "attach",
+      // "processCreateCommands": [
+      //   "process launch mpirun -np 2 ${workspaceFolder}/${fileBasenameNoExtension}.o"
+      // ],
+      "program": "${fileDirname}/${fileBasenameNoExtension}.o"
+      // "preLaunchTask": "build-active-file"
+    }
+  ]
+}
