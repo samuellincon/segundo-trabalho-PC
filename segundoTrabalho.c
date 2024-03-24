@@ -239,9 +239,6 @@ void control(int np, int number_of_lines, int number_of_columns) {
     }
   }
 
-  MPI_Bcast(&number_of_lines, 1, MPI_INT, CONTROLLER_PROCESS, MPI_COMM_WORLD);
-  MPI_Bcast(&number_of_columns, 1, MPI_INT, CONTROLLER_PROCESS, MPI_COMM_WORLD);
-
   printf("[NODE-0] Número de linhas %d\n", number_of_lines);
   printf("[NODE-0] Número de colunas %d\n", number_of_columns);
 
@@ -400,17 +397,14 @@ void control(int np, int number_of_lines, int number_of_columns) {
       "\033[32;1;4m[NODE-0] Matriz resultado validada com sucesso!\033[0m\n");
 }
 
-void node(int id, int np) {
+void node(int id, int np, int number_of_lines, int number_of_columns) {
   int next_process_id = (id + 1) % np;
 
   process_data_t data;
   data.process_id = id;
   data.process_count = np;
-
-  MPI_Bcast(&data.number_of_lines, 1, MPI_INT, CONTROLLER_PROCESS,
-            MPI_COMM_WORLD);
-  MPI_Bcast(&data.number_of_columns, 1, MPI_INT, CONTROLLER_PROCESS,
-            MPI_COMM_WORLD);
+  data.number_of_lines = number_of_lines;
+  data.number_of_columns = number_of_columns;
 
   printf("[NODE-%d] Recebido número de linhas %d\n", id, data.number_of_lines);
   printf("[NODE-%d] Recebido número de colunas %d\n", id,
@@ -530,7 +524,7 @@ int main(int argc, char *argv[]) {
     printf("[NODE-0] Linhas: %d, Colunas: %d\n", linhas, colunas);
     control(np, linhas, colunas);
   } else {
-    node(id, np);
+    node(id, np, linhas, colunas);
   }
 
   MPI_Finalize();
