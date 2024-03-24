@@ -28,11 +28,25 @@
 #define DONE_LINE_TAG 6
 #define LINES_PER_PROCESS_TAG 7
 
+/*
+  cached_element_t
+  Estrutura de dados para armazenar elementos recebidos de outros processos
+  Como o valor do elemento e se ele foi recebido ou não
+*/
 typedef struct {
   bool recvd;
   int value;
 } cached_element_t;
 
+/*
+  line_data_t
+  Estrutura de dados para armazenar informações sobre a linha
+  Como o índice da linha
+  A linha em si
+  A linha seguinte
+  E a linha anterior, que faz um cache dos elementos recebidos do
+  processo que a processou
+*/
 typedef struct {
   int line_index;
   int *current_line;
@@ -40,6 +54,13 @@ typedef struct {
   cached_element_t *top_line;
 } line_data_t;
 
+/*
+  process_data_t
+  Estrutura de dados para armazenar informações sobre o processo
+  Como a quantidade de linhas a serem processadas por ele
+  O número de linhas e colunas da matriz
+  E o id do processo
+*/
 typedef struct {
   int number_of_lines;
   int number_of_columns;
@@ -48,6 +69,10 @@ typedef struct {
   int lines_to_process;
 } process_data_t;
 
+/*
+  Macros para imprimir informações e mensagens de debug
+  Com cores se USE_COLOR for verdadeiro
+*/
 #define info(id, f_, ...)                             \
   do {                                                \
     if (USE_COLOR) {                                  \
@@ -80,10 +105,25 @@ typedef struct {
     }                                                   \
   } while (0)
 
+/*
+  create_tag
+  Função para criar uma tag para mensagens MPI
+  A tag é composta por um identificador de tipo de mensagem
+  O índice da linha e o índice da coluna
+
+  Ficam 12 bits para a tag
+  10 bits para o índice da linha
+  10 bits para o índice da coluna
+*/
 int create_tag(int tag, int line_index, int column_index) {
   return (tag) << 20 | (line_index << 10) | column_index;
 }
 
+/*
+  validador
+  Função que executa o algoritmo em modo sincrono
+  Usada para validadar a matriz calculada pelo algoritmo em MPI
+*/
 void validador(int **matriz, int linhas, int colunas) {
   for (int i = 0; i < linhas; i++) {
     for (int j = 0; j < colunas; j++) {
@@ -145,6 +185,12 @@ void validador(int **matriz, int linhas, int colunas) {
   }
 }
 
+/*
+  generate_matrix
+  Função para gerar uma matriz de números aleatórios
+  Recebe o número de linhas e colunas da matriz
+  Retorna um ponteiro para a matriz gerada
+*/
 int **generate_matrix(int number_of_lines, int number_columns) {
   int **matrix_generated;
   matrix_generated = (int **)malloc(number_of_lines * sizeof(int *));
@@ -157,6 +203,14 @@ int **generate_matrix(int number_of_lines, int number_columns) {
   return matrix_generated;
 }
 
+/*
+  display_matrix
+  Função para exibir a matriz na tela
+  Recebe a matriz, o número de linhas e o número de colunas
+  Imprime a matriz na tela
+
+  Só é usada pelo processo 0
+*/
 void display_matrix(int **matrix, int number_of_lines, int number_of_columns) {
   char *matrix_to_print =
       (char *)malloc(number_of_columns * number_of_lines * 6 * sizeof(char));
@@ -175,6 +229,12 @@ void display_matrix(int **matrix, int number_of_lines, int number_of_columns) {
   free(matrix_to_print);
 }
 
+/*
+  receive_or_get_item
+  Função para receber um elemento de outro processo
+  Se o elemento já foi recebido, retorna o valor do elemento
+  Se não, recebe o elemento do processo e retorna o valor
+*/
 int receive_or_get_item(process_data_t *data, line_data_t *line, int from,
                         int i) {
   if (line->top_line[i].recvd) {
@@ -198,6 +258,12 @@ int receive_or_get_item(process_data_t *data, line_data_t *line, int from,
   return line->top_line[i].value;
 }
 
+/*
+  process_element
+  Função para processar um elemento da matriz
+  Recebe a estrutura de dados do processo, a linha e o índice do elemento
+  Retorna o valor do elemento processado
+*/
 int process_element(process_data_t *data, line_data_t *line, int i) {
   int soma = 0;
   int contador = 0;
@@ -267,6 +333,14 @@ int process_element(process_data_t *data, line_data_t *line, int i) {
   return floor((float)soma / contador);
 }
 
+/*
+  control
+  Função do processo 0
+  Responsável por coordenar a execução do algoritmo
+  Recebe o número de processos, o número de linhas e o número de colunas
+  Gera a matriz, envia as linhas para os processos e processa as linhas
+  Recebe as linhas processadas e valida a matriz final
+*/
 void control(int np, int number_of_lines, int number_of_columns) {
   int **matrix;
   int **matrix_backup;
@@ -302,6 +376,9 @@ void control(int np, int number_of_lines, int number_of_columns) {
   data.number_of_columns = number_of_columns;
   data.lines_to_process = lines_per_process;
 
+  // Envia para cada processo o número de linhas que ele deve processar
+  // e as linhas que ele deve processar.
+  // De maneira intercalada, para que nenhum processo receba linhas consecutivas
   for (int i = 1; i < np; i++) {
     MPI_Send(&lines_per_process, 1, MPI_INT, i, LINES_PER_PROCESS_TAG,
              MPI_COMM_WORLD);
@@ -325,6 +402,7 @@ void control(int np, int number_of_lines, int number_of_columns) {
     }
   }
 
+  // Aloca e inicializa as linhas que o processo 0 é responsável por processar
   line_data_t lines[data.lines_to_process];
 
   for (int i = 0; i < lines_per_process; i++) {
@@ -345,8 +423,11 @@ void control(int np, int number_of_lines, int number_of_columns) {
     }
   }
 
+  // Aguarde que todos os processos tenham recebido suas linhas
   MPI_Barrier(MPI_COMM_WORLD);
 
+  // Processa cada linha e envia cada elemento processado para o processo
+  // vizinho
   for (int i = 0; i < lines_per_process; i++) {
     for (int j = 0; j < number_of_columns; j++) {
       int result = process_element(&data, &lines[i], j);
@@ -364,6 +445,8 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
     info(CONTROLLER_PROCESS, "Concluído linha %d", lines[i].line_index);
 
+    // Ao terminar uma linha, espera todas as linhas anteriores serem
+    // processadas e as recebe
     if (i > 0) {
       int prev_completed_line = lines[i - 1].line_index;
 
@@ -383,6 +466,7 @@ void control(int np, int number_of_lines, int number_of_columns) {
         info(CONTROLLER_PROCESS, "Recebido linha %d de 'PROCESSO-%d'",
              prev_completed_line + j, j);
 
+        // Atualiza a linha na matriz
         for (int k = 0; k < number_of_columns; k++) {
           matrix[prev_completed_line + j][k] = done_line[k];
         }
@@ -390,6 +474,8 @@ void control(int np, int number_of_lines, int number_of_columns) {
     }
   }
 
+  // Caso especial onde o processo-0 não process a última linha da matriz
+  // Aqui espera as linhas seguintes serem processadas e as recebe
   line_data_t *last_processed = &lines[lines_per_process - 1];
 
   if (last_processed->line_index < number_of_lines) {
@@ -417,6 +503,7 @@ void control(int np, int number_of_lines, int number_of_columns) {
     }
   }
 
+  // Aguarde que todos os processos tenham processado suas linhas
   MPI_Barrier(MPI_COMM_WORLD);
 
   info(CONTROLLER_PROCESS, "Matriz final");
@@ -425,6 +512,7 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
   validador(matrix_backup, number_of_lines, number_of_columns);
 
+  // Valida a matriz final
   for (int i = 0; i < number_of_lines; i++) {
     for (int j = 0; j < number_of_columns; j++) {
       if (matrix[i][j] != matrix_backup[i][j]) {
@@ -442,6 +530,14 @@ void control(int np, int number_of_lines, int number_of_columns) {
   info(CONTROLLER_PROCESS, "Matriz resultado validada com sucesso!");
 }
 
+/*
+  node
+  Função dos processos coordenados pelo processo 0
+  Recebe o id do processo, o número de processos, o número de linhas e o número
+  de colunas
+  Recebe do processo 0 as linhas a serem processadas, processa as linhas e envia
+  os elementos processados para o próximo processo Ao final de cada linha
+*/
 void node(int id, int np, int number_of_lines, int number_of_columns) {
   int next_process_id = (id + 1) % np;
 
@@ -462,6 +558,7 @@ void node(int id, int np, int number_of_lines, int number_of_columns) {
 
   line_data_t lines[data.lines_to_process];
 
+  // Aloca e recebe do processo-0 cada uma das linhas a serem processadas
   for (int i = 0; i < data.lines_to_process; i++) {
     lines[i].current_line = (int *)malloc(data.number_of_columns * sizeof(int));
     lines[i].top_line = (cached_element_t *)malloc(data.number_of_columns *
@@ -491,10 +588,13 @@ void node(int id, int np, int number_of_lines, int number_of_columns) {
     info(id, "Recebido linha %d", lines[i].line_index);
   }
 
+  // Aguarde que todos os processos tenham recebido suas linhas
   MPI_Barrier(MPI_COMM_WORLD);
 
   int done_line[data.number_of_columns];
 
+  // Processa cada linha e envia cada elemento processado para o processo
+  // seguinte
   for (int i = 0; i < data.lines_to_process; i++) {
     for (int j = 0; j < data.number_of_columns; j++) {
       done_line[j] = process_element(&data, &lines[i], j);
@@ -509,6 +609,8 @@ void node(int id, int np, int number_of_lines, int number_of_columns) {
       MPI_Send(&done_line[j], 1, MPI_INT, next_process_id, tag, MPI_COMM_WORLD);
     }
 
+    // Envia a linha inteira processada para o processo-0
+
     info(id, "Concluído linha %d", lines[i].line_index);
 
     int tag = create_tag(DONE_LINE_TAG, lines[i].line_index, 0);
@@ -522,6 +624,7 @@ void node(int id, int np, int number_of_lines, int number_of_columns) {
              tag, MPI_COMM_WORLD);
   }
 
+  // Aguarde que todos os processos tenham processado suas linhas
   MPI_Barrier(MPI_COMM_WORLD);
 }
 
