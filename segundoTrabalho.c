@@ -4,7 +4,17 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
+
+#define DEBUG false
+
+// Desabilita cores automaticamente no windows
+#if defined(__WIN32) || defined(__WIN64)
+#define USE_COLOR false
+#else
+#define USE_COLOR true
+#endif
 
 #define MAX_LINES 1000
 #define MAX_COLUMNS 1000
@@ -37,6 +47,38 @@ typedef struct {
   int process_count;
   int lines_to_process;
 } process_data_t;
+
+#define info(id, f_, ...)                             \
+  do {                                                \
+    if (USE_COLOR) {                                  \
+      int color = (id + 5) % 8;                       \
+      printf("\033[0;9%dm[PROCESSO-%d] ", color, id); \
+      printf((f_), ##__VA_ARGS__);                    \
+      printf("\033[0m\n");                            \
+                                                      \
+    } else {                                          \
+      printf("[PROCESSO-%d] ", id);                   \
+      printf((f_), ##__VA_ARGS__);                    \
+      printf("\n");                                   \
+    }                                                 \
+  } while (0)
+
+#define debug(id, f_, ...)                              \
+  do {                                                  \
+    if (DEBUG) {                                        \
+      if (USE_COLOR) {                                  \
+        int color = (id + 5) % 8;                       \
+        printf("\033[0;9%dm[PROCESSO-%d] ", color, id); \
+        printf((f_), ##__VA_ARGS__);                    \
+        printf("\033[0m\n");                            \
+                                                        \
+      } else {                                          \
+        printf("[PROCESSO-%d] ", id);                   \
+        printf((f_), ##__VA_ARGS__);                    \
+        printf("\n");                                   \
+      }                                                 \
+    }                                                   \
+  } while (0)
 
 int create_tag(int tag, int line_index, int column_index) {
   return (tag) << 20 | (line_index << 10) | column_index;
@@ -116,16 +158,21 @@ int **generate_matrix(int number_of_lines, int number_columns) {
 }
 
 void display_matrix(int **matrix, int number_of_lines, int number_of_columns) {
-  printf("Matriz: \n");
+  char *matrix_to_print =
+      (char *)malloc(number_of_columns * number_of_lines * 6 * sizeof(char));
+
   for (int i = 0; i < number_of_lines; i++) {
+    sprintf(matrix_to_print + strlen(matrix_to_print), "[ ");
     for (int j = 0; j < number_of_columns; j++) {
-      printf("%d ", matrix[i][j]);
+      sprintf(matrix_to_print + strlen(matrix_to_print), "%d ", matrix[i][j]);
     }
 
-    printf("\n");
+    sprintf(matrix_to_print + strlen(matrix_to_print), "]\n");
   }
 
-  printf("\n");
+  info(CONTROLLER_PROCESS, "\n\n%s", matrix_to_print);
+
+  free(matrix_to_print);
 }
 
 int receive_or_get_item(process_data_t *data, line_data_t *line, int from,
@@ -136,17 +183,17 @@ int receive_or_get_item(process_data_t *data, line_data_t *line, int from,
 
   int tag = create_tag(DONE_ELEMENT_TAG, line->line_index - 1, i);
 
-  printf("[NODE-%d] Esperando elemento M[%d][%d] de 'NODE-%d' com TAG=%x\n",
-         data->process_id, line->line_index - 1, i, from, tag);
+  debug(data->process_id,
+        "Esperando elemento M[%d][%d] de 'PROCESSO-%d' com TAG=0x%x",
+        line->line_index - 1, i, from, tag);
 
   MPI_Recv(&line->top_line[i].value, 1, MPI_INT, from, tag, MPI_COMM_WORLD,
            MPI_STATUS_IGNORE);
 
   line->top_line[i].recvd = true;
 
-  printf("[NODE-%d] Recebido elemento M[%d][%d]=%d de 'NODE-%d'\n",
-         data->process_id, line->line_index - 1, i, line->top_line[i].value,
-         from);
+  debug(data->process_id, "Recebido elemento M[%d][%d]=%d de 'PROCESSO-%d'",
+        line->line_index - 1, i, line->top_line[i].value, from);
 
   return line->top_line[i].value;
 }
@@ -161,8 +208,8 @@ int process_element(process_data_t *data, line_data_t *line, int i) {
     prev_process_id = data->process_count - 1;
   }
 
-  printf("[NODE-%d] Processando elemento M[%d][%d]=%d\n", data->process_id,
-         line->line_index, i, line->current_line[i]);
+  debug(data->process_id, "Processando elemento M[%d][%d]=%d", line->line_index,
+        i, line->current_line[i]);
 
   // Condições para verificar se existe um elemento ao redor do elemento
   // sendo processado
@@ -228,6 +275,8 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
   matrix = generate_matrix(number_of_lines, number_of_columns);
 
+  info(CONTROLLER_PROCESS, "Matriz gerada:");
+
   display_matrix(matrix, number_of_lines, number_of_columns);
 
   // cria uma cópia da matriz original para validação
@@ -239,14 +288,12 @@ void control(int np, int number_of_lines, int number_of_columns) {
     }
   }
 
-  printf("[NODE-0] Número de linhas %d\n", number_of_lines);
-  printf("[NODE-0] Número de colunas %d\n", number_of_columns);
+  info(CONTROLLER_PROCESS, "Número de linhas %d", number_of_lines);
+  info(CONTROLLER_PROCESS, "Número de colunas %d", number_of_columns);
 
   int lines_per_process = number_of_lines / np;
-  int remaining_lines = number_of_lines % np;
 
-  printf("[NODE-0] Linhas para cada processo %d\n", lines_per_process);
-  printf("[NODE-0] Linhas restantes %d\n", remaining_lines);
+  info(CONTROLLER_PROCESS, "Linhas para cada processo %d", lines_per_process);
 
   process_data_t data;
   data.process_id = CONTROLLER_PROCESS;
@@ -261,7 +308,8 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
     for (int j = 0; j < lines_per_process; j++) {
       int line_index = i + j * np;
-      printf("[NODE-0] Enviando linha %d para 'NODE-%d'\n", line_index, i);
+      info(CONTROLLER_PROCESS, "Enviando linha %d para 'PROCESSO-%d'",
+           line_index, i);
       int *current_line = matrix[line_index];
 
       MPI_Send(&line_index, 1, MPI_INT, i, LINE_INDEX_TAG, MPI_COMM_WORLD);
@@ -281,8 +329,7 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
   for (int i = 0; i < lines_per_process; i++) {
     lines[i].line_index = i + i * (np - 1);
-    printf("\033[31;1;4m[NODE-0] Usuarei %d, com idx=%d\033[0m\n", i,
-           lines[i].line_index);
+    debug(CONTROLLER_PROCESS, "Escolhido linha %d", lines[i].line_index);
     lines[i].current_line = matrix[lines[i].line_index];
     lines[i].top_line = (cached_element_t *)malloc(number_of_columns *
                                                    sizeof(cached_element_t));
@@ -307,17 +354,15 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
       int tag = create_tag(DONE_ELEMENT_TAG, lines[i].line_index, j);
 
-      printf(
-          "[NODE-0] Enviando elemento processado M[%d][%d]=%d para 'NODE-%d' "
-          "com "
-          "TAG=%x\n",
-          i, j, result, next_process_id, tag);
+      info(CONTROLLER_PROCESS,
+           "Concluído elemento M[%d][%d] enviando para "
+           "'PROCESSO-%d'",
+           lines[i].line_index, j, next_process_id);
 
       MPI_Send(&result, 1, MPI_INT, next_process_id, tag, MPI_COMM_WORLD);
     }
-    printf("[NODE-0] CONCLUIDO LINHA %d\n", lines[i].line_index);
 
-    // Esperar a proxima linha completar
+    info(CONTROLLER_PROCESS, "Concluído linha %d", lines[i].line_index);
 
     if (i > 0) {
       int prev_completed_line = lines[i - 1].line_index;
@@ -327,16 +372,16 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
         int tag = create_tag(DONE_LINE_TAG, prev_completed_line + j, 0);
 
-        printf(
-            "\033[31;1;4m[NODE-0] Esperando linha %d de 'NODE-%d' com "
-            "TAG=%x\033[0m\n",
-            prev_completed_line + j, j, tag);
+        debug(CONTROLLER_PROCESS,
+              "Esperando linha %d de 'PROCESSO-%d' com "
+              "TAG=0x%x",
+              prev_completed_line + j, j, tag);
 
         MPI_Recv(done_line, number_of_columns, MPI_INT, j, tag, MPI_COMM_WORLD,
                  MPI_STATUS_IGNORE);
 
-        printf("[NODE-0] Recebido linha %d de 'NODE-%d'\n",
-               prev_completed_line + j, j);
+        info(CONTROLLER_PROCESS, "Recebido linha %d de 'PROCESSO-%d'",
+             prev_completed_line + j, j);
 
         for (int k = 0; k < number_of_columns; k++) {
           matrix[prev_completed_line + j][k] = done_line[k];
@@ -355,16 +400,16 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
       int tag = create_tag(DONE_LINE_TAG, last_line_index + j, 0);
 
-      printf(
-          "\033[31;1;4m[NODE-0] Esperando linha %d de 'NODE-%d' com "
-          "TAG=%x\033[0m\n",
-          last_line_index + j, j, tag);
+      debug(CONTROLLER_PROCESS,
+            "Esperando linha %d de 'PROCESSO-%d' com "
+            "TAG=0x%x",
+            last_line_index + j, j, tag);
 
       MPI_Recv(done_line, number_of_columns, MPI_INT, j, tag, MPI_COMM_WORLD,
                MPI_STATUS_IGNORE);
 
-      printf("[NODE-0] Recebido linha %d de 'NODE-%d'\n", last_line_index + j,
-             j);
+      info(CONTROLLER_PROCESS, "Recebido linha %d de 'PROCESSO-%d'",
+           last_line_index + j, j);
 
       for (int k = 0; k < number_of_columns; k++) {
         matrix[last_line_index + j][k] = done_line[k];
@@ -374,7 +419,7 @@ void control(int np, int number_of_lines, int number_of_columns) {
 
   MPI_Barrier(MPI_COMM_WORLD);
 
-  printf("[NODE-0] Matriz final\n");
+  info(CONTROLLER_PROCESS, "Matriz final");
 
   display_matrix(matrix, number_of_lines, number_of_columns);
 
@@ -383,18 +428,18 @@ void control(int np, int number_of_lines, int number_of_columns) {
   for (int i = 0; i < number_of_lines; i++) {
     for (int j = 0; j < number_of_columns; j++) {
       if (matrix[i][j] != matrix_backup[i][j]) {
-        printf(
-            "\033[31;1;4m[NODE-0] Matrizes diferentes na posição [%d][%d] "
-            "original=%d, final=%d\033[0m\n",
-            i, j, matrix_backup[i][j], matrix[i][j]);
+        info(CONTROLLER_PROCESS,
+             "ERRO! Matrizes diferentes na posição [%d][%d] "
+             "original=%d, final=%d",
+             i, j, matrix_backup[i][j], matrix[i][j]);
+
         MPI_Finalize();
         exit(1);
       }
     }
   }
 
-  printf(
-      "\033[32;1;4m[NODE-0] Matriz resultado validada com sucesso!\033[0m\n");
+  info(CONTROLLER_PROCESS, "Matriz resultado validada com sucesso!");
 }
 
 void node(int id, int np, int number_of_lines, int number_of_columns) {
@@ -406,15 +451,14 @@ void node(int id, int np, int number_of_lines, int number_of_columns) {
   data.number_of_lines = number_of_lines;
   data.number_of_columns = number_of_columns;
 
-  printf("[NODE-%d] Recebido número de linhas %d\n", id, data.number_of_lines);
-  printf("[NODE-%d] Recebido número de colunas %d\n", id,
-         data.number_of_columns);
+  debug(id, "Recebido número de linhas %d", data.number_of_lines);
+  debug(id, "Recebido número de colunas %d", data.number_of_columns);
 
   MPI_Recv(&data.lines_to_process, 1, MPI_INT, CONTROLLER_PROCESS,
            LINES_PER_PROCESS_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  printf("[NODE-%d] Recebido número de linhas para processar %d\n", id,
-         data.lines_to_process);
+  info(id, "Recebido número de linhas para processar %d",
+       data.lines_to_process);
 
   line_data_t lines[data.lines_to_process];
 
@@ -444,7 +488,7 @@ void node(int id, int np, int number_of_lines, int number_of_columns) {
       lines[i].next_line = NULL;
     }
 
-    printf("[NODE-%d] Recebido linha %d\n", id, lines[i].line_index);
+    info(id, "Recebido linha %d", lines[i].line_index);
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
@@ -457,23 +501,22 @@ void node(int id, int np, int number_of_lines, int number_of_columns) {
       lines[i].current_line[j] = done_line[j];
       int tag = create_tag(DONE_ELEMENT_TAG, lines[i].line_index, j);
 
-      printf(
-          "[NODE-%d] Enviando elemento processado M[%d][%d]=%d para "
-          "'NODE-%d' "
-          "com "
-          "TAG=%x\n",
-          id, lines[i].line_index, j, done_line[j], next_process_id, tag);
+      info(id,
+           "Concluído elemento M[%d][%d] enviando para "
+           "'PROCESSO-%d'",
+           lines[i].line_index, j, next_process_id);
 
       MPI_Send(&done_line[j], 1, MPI_INT, next_process_id, tag, MPI_COMM_WORLD);
     }
-    printf("[NODE-%d] CONCLUIDO LINHA %d\n", id, lines[i].line_index);
+
+    info(id, "Concluído linha %d", lines[i].line_index);
 
     int tag = create_tag(DONE_LINE_TAG, lines[i].line_index, 0);
 
-    printf(
-        "\033[0;32m[NODE-%d] Enviando linha processada %d para "
-        "'NODE-%d' com TAG=%x\033[0m\n",
-        id, lines[i].line_index, CONTROLLER_PROCESS, tag);
+    info(id,
+         "Enviando linha processada %d para "
+         "'PROCESSO-%d'",
+         lines[i].line_index, CONTROLLER_PROCESS);
 
     MPI_Send(done_line, data.number_of_columns, MPI_INT, CONTROLLER_PROCESS,
              tag, MPI_COMM_WORLD);
@@ -521,7 +564,6 @@ int main(int argc, char *argv[]) {
   }
 
   if (id == CONTROLLER_PROCESS) {
-    printf("[NODE-0] Linhas: %d, Colunas: %d\n", linhas, colunas);
     control(np, linhas, colunas);
   } else {
     node(id, np, linhas, colunas);
