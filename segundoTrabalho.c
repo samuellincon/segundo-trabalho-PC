@@ -215,6 +215,8 @@ void display_matrix(int **matrix, int number_of_lines, int number_of_columns) {
   char *matrix_to_print =
       (char *)malloc(number_of_columns * number_of_lines * 6 * sizeof(char));
 
+  matrix_to_print[0] = '\0';
+
   for (int i = 0; i < number_of_lines; i++) {
     sprintf(matrix_to_print + strlen(matrix_to_print), "[ ");
     for (int j = 0; j < number_of_columns; j++) {
